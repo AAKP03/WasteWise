@@ -3,7 +3,8 @@ class DisposalPoint {
   final double latitude;
   final double longitude;
   final String address;
-  final List<String> categoriesAccepted; // e.g. ["Electronics", "Batteries"]
+  final List<String> categoriesAccepted;
+  final String? source; // <-- add: where the info came from
 
   DisposalPoint({
     required this.name,
@@ -11,5 +12,6 @@ class DisposalPoint {
     required this.longitude,
     required this.address,
     required this.categoriesAccepted,
+    this.source, // <-- add
   });
 }
