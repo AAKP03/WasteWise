@@ -1,31 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../data/disposal_points_seed.dart';
+
 class MapScreen extends StatelessWidget {
   const MapScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final disposalPoints = [
-      {
-        'name': 'GreenKeepers (Pvt) Ltd',
-        'address': '115, 6 Rosmead Pl, Colombo',
-        'category': 'Clothing',
-        'distance': '1.2 km',
-      },
-      {
-        'name': 'The Salvation Army',
-        'address': 'Union Place, Colombo',
-        'category': 'Clothing',
-        'distance': '2.0 km',
-      },
-      {
-        'name': 'Central Recycling Point',
-        'address': 'Colombo',
-        'category': 'Electronics',
-        'distance': '2.8 km',
-      },
-    ];
-
     return Scaffold(
       backgroundColor: const Color(0xFFF4F8F4),
       appBar: AppBar(
@@ -159,6 +140,9 @@ class MapScreen extends StatelessWidget {
                 itemCount: disposalPoints.length,
                 itemBuilder: (context, index) {
                   final point = disposalPoints[index];
+                  final categoryLabel = point.categoriesAccepted.isEmpty
+                      ? 'General'
+                      : point.categoriesAccepted.join(' · ');
 
                   return Card(
                     elevation: 1.5,
@@ -187,7 +171,7 @@ class MapScreen extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  point['name']!,
+                                  point.name,
                                   style: const TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 16,
@@ -195,7 +179,7 @@ class MapScreen extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 6),
                                 Text(
-                                  point['address']!,
+                                  point.address,
                                   style: TextStyle(
                                     color: Colors.grey.shade700,
                                     fontSize: 14,
@@ -207,7 +191,7 @@ class MapScreen extends StatelessWidget {
                                   runSpacing: 8,
                                   crossAxisAlignment: WrapCrossAlignment.center,
                                   children: [
-                                    // Category chip/badge
+                                    // Category chip/badge from categoriesAccepted
                                     Container(
                                       padding: const EdgeInsets.symmetric(
                                         horizontal: 10,
@@ -221,7 +205,7 @@ class MapScreen extends StatelessWidget {
                                         ),
                                       ),
                                       child: Text(
-                                        point['category']!,
+                                        categoryLabel,
                                         style: TextStyle(
                                           color: Colors.green.shade800,
                                           fontSize: 12,
@@ -229,7 +213,7 @@ class MapScreen extends StatelessWidget {
                                         ),
                                       ),
                                     ),
-                                    // Distance with icon
+                                    // Temporary distance UI (seed data has no distance)
                                     Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
@@ -240,7 +224,7 @@ class MapScreen extends StatelessWidget {
                                         ),
                                         const SizedBox(width: 4),
                                         Text(
-                                          point['distance']!,
+                                          'Distance unavailable',
                                           style: TextStyle(
                                             fontWeight: FontWeight.bold,
                                             color: Colors.green.shade700,
