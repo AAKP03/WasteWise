@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 class PointsScreen extends StatelessWidget {
   const PointsScreen({super.key});
