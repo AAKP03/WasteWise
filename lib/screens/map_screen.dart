@@ -3,6 +3,8 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import '../services/location_service.dart';
+import '../data/disposal_points_seed.dart' as seed;
+import '../models/disposal_point.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -18,27 +20,8 @@ class _MapScreenState extends State<MapScreen> {
 
   final MapController _mapController = MapController();
 
-  // Disposal points list (from feature/points-ui)
-  final List<Map<String, String>> disposalPoints = [
-    {
-      'name': 'GreenKeepers (Pvt) Ltd',
-      'address': '115, 6 Rosmead Pl, Colombo',
-      'category': 'Clothing',
-      'distance': '1.2 km',
-    },
-    {
-      'name': 'The Salvation Army',
-      'address': 'Union Place, Colombo',
-      'category': 'Clothing',
-      'distance': '2.0 km',
-    },
-    {
-      'name': 'Central Recycling Point',
-      'address': 'Colombo',
-      'category': 'Electronics',
-      'distance': '2.8 km',
-    },
-  ];
+  // Real disposal points from seed data (with GPS coordinates)
+  final List<DisposalPoint> disposalPoints = seed.disposalPoints;
 
   @override
   void initState() {
@@ -52,6 +35,9 @@ class _MapScreenState extends State<MapScreen> {
       setState(() {
         _currentPosition = position;
         _isLoading = false;
+        if (position == null) {
+          _errorMessage = 'Could not get location. Check GPS and permissions.';
+        }
       });
     } catch (e) {
       setState(() {
@@ -115,6 +101,17 @@ class _MapScreenState extends State<MapScreen> {
                 itemCount: disposalPoints.length,
                 itemBuilder: (context, index) {
                   final point = disposalPoints[index];
+                  // Calculate distance if we have user location
+                  String distanceLabel = '';
+                  if (_currentPosition != null) {
+                    final km = LocationService.distanceInKm(
+                      _currentPosition!.latitude,
+                      _currentPosition!.longitude,
+                      point.latitude,
+                      point.longitude,
+                    );
+                    distanceLabel = '${km.toStringAsFixed(1)} km';
+                  }
                   return Card(
                     elevation: 1.5,
                     margin: const EdgeInsets.only(bottom: 14),
@@ -142,7 +139,7 @@ class _MapScreenState extends State<MapScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  point['name']!,
+                                  point.name,
                                   style: const TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 16,
@@ -150,7 +147,7 @@ class _MapScreenState extends State<MapScreen> {
                                 ),
                                 const SizedBox(height: 6),
                                 Text(
-                                  point['address']!,
+                                  point.address,
                                   style: TextStyle(
                                     color: Colors.grey.shade700,
                                     fontSize: 14,
@@ -162,46 +159,49 @@ class _MapScreenState extends State<MapScreen> {
                                   runSpacing: 8,
                                   crossAxisAlignment: WrapCrossAlignment.center,
                                   children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 10,
-                                        vertical: 5,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Colors.green.shade50,
-                                        borderRadius: BorderRadius.circular(20),
-                                        border: Border.all(
-                                          color: Colors.green.shade200,
+                                    ...point.categoriesAccepted.map(
+                                      (cat) => Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 5,
                                         ),
-                                      ),
-                                      child: Text(
-                                        point['category']!,
-                                        style: TextStyle(
-                                          color: Colors.green.shade800,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ),
-                                    Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          Icons.near_me,
-                                          size: 16,
-                                          color: Colors.green.shade700,
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          point['distance']!,
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.green.shade700,
-                                            fontSize: 13,
+                                        decoration: BoxDecoration(
+                                          color: Colors.green.shade50,
+                                          borderRadius: BorderRadius.circular(20),
+                                          border: Border.all(
+                                            color: Colors.green.shade200,
                                           ),
                                         ),
-                                      ],
+                                        child: Text(
+                                          cat,
+                                          style: TextStyle(
+                                            color: Colors.green.shade800,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
                                     ),
+                                    if (distanceLabel.isNotEmpty)
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.near_me,
+                                            size: 16,
+                                            color: Colors.green.shade700,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            distanceLabel,
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.green.shade700,
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                   ],
                                 ),
                               ],
@@ -307,14 +307,28 @@ class _MapScreenState extends State<MapScreen> {
         ),
         MarkerLayer(
           markers: [
+            // User location marker
             Marker(
               point: userLatLng,
               width: 48,
               height: 48,
               child: const Icon(
-                Icons.location_pin,
-                color: Colors.red,
-                size: 48,
+                Icons.my_location,
+                color: Colors.blue,
+                size: 40,
+              ),
+            ),
+            // Disposal point markers
+            ...disposalPoints.map(
+              (point) => Marker(
+                point: LatLng(point.latitude, point.longitude),
+                width: 36,
+                height: 36,
+                child: const Icon(
+                  Icons.location_pin,
+                  color: Colors.green,
+                  size: 36,
+                ),
               ),
             ),
           ],

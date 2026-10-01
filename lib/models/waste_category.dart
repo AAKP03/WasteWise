@@ -1,9 +1,9 @@
 class WasteCategory {
   final String name;
-  final String icon; // emoji or asset path, e.g. "📱"
-  final String disposalType; // "Recyclable", "Hazardous", "Donate", "Normal Waste"
+  final String icon;
+  final String disposalType;
   final String guidanceText;
-  final String? warningText; // optional, nullable — not every category needs one
+  final String? warningText;
 
   WasteCategory({
     required this.name,
