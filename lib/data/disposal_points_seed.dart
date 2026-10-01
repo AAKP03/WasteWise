@@ -1,4 +1,4 @@
-import '../models/disposal_point.dart';
+﻿import '../models/disposal_point.dart';
 
 // Category names must match WasteCategory.name exactly:
 // "Electronics", "Batteries", "Plastic", "Clothing"
