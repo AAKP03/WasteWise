@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'guide_screen.dart';
 
 class CategoryScreen extends StatelessWidget {
   const CategoryScreen({super.key});
@@ -43,7 +44,14 @@ class CategoryScreen extends StatelessWidget {
             return Card(
               child: InkWell(
                 onTap: () {
-                  debugPrint('${category['name']} selected');
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => GuideScreen(
+                        categoryName: category['name'] as String,
+                      ),
+                    ),
+                  );
                 },
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
