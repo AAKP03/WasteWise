@@ -31,10 +31,11 @@ class DBHelper {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, 'wastewise.db');
 
-    return await openDatabase(
+       return await openDatabase(
       path,
-      version: 1,
+      version: 3,
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
   }
 
@@ -71,6 +72,14 @@ class DBHelper {
       )
     ''');
 
+    await _seedData(db);
+  }
+
+  // Runs when an installed app has an older database version.
+  // Reloads reference data but keeps the user's eco_points_log.
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    await db.delete('categories');
+    await db.delete('disposal_points');
     await _seedData(db);
   }
 

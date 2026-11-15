@@ -22,9 +22,9 @@ final List<DisposalPoint> disposalPoints = [
   ),
   DisposalPoint(
     name: "e-Kunu - Dialog Finance Building",
-    address: "Level 01 No.57, Srimath Anagarika Dharmapala Mawatha, Colombo 03",
-    latitude: 6.898872303, // TODO: double-check this pin (looks too far south)
-    longitude: 79.85620338,
+    address: "Level 01, No. 57, Srimath Anagarika Dharmapala Mawatha, Colombo 03",
+    latitude: 6.9128,
+    longitude: 79.8535,
     categoriesAccepted: ["Electronics", "Batteries"],
     source: "ekunu.lk",
   ),
@@ -98,7 +98,7 @@ final List<DisposalPoint> disposalPoints = [
   // ---------- Plastic ----------
   DisposalPoint(
     name: "Zerotrash Recyclable Plastic Collection Centre",
-    address: "Boralesgamuwa", // TODO: add street address
+    address: "No 103/13, Katuwawala, Boralesgamuwa",
     latitude: 6.848785911,
     longitude: 79.90444943,
     categoriesAccepted: ["Plastic"],
@@ -120,11 +120,11 @@ final List<DisposalPoint> disposalPoints = [
     categoriesAccepted: ["Plastic"],
     source: "Google Maps",
   ),
-  DisposalPoint(
-    name: "Saubagya Plastic",
+    DisposalPoint(
+    name: "Saubagya Plastic Lanka",
     address: "438 A, Kudabolaththa, Ganemulla",
-    latitude: 7.51934865, // TODO: re-copy pin, this is far north of Ganemulla
-    longitude: 79.96906872,
+    latitude: 7.062915,
+    longitude: 79.967567,
     categoriesAccepted: ["Plastic"],
     source: "Google Maps",
   ),

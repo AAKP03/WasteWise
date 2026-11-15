@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'data/db_helper.dart';
 
 void main() => runApp(const MaterialApp(home: DbTestScreen()));
@@ -23,14 +24,17 @@ class _DbTestScreenState extends State<DbTestScreen> {
     final categories = await db.getCategories();
     final allPoints = await db.getDisposalPoints();
     final electronics = await db.getDisposalPoints(category: 'Electronics');
+    final saubagya = allPoints.firstWhere((p) => p.name.contains('Saubagya'));
     await db.addEcoPoints('Electronics');
     final total = await db.getTotalEcoPoints();
 
     setState(() {
-      result = 'Categories: ${categories.length} (expect 4)\n'
-          'All points: ${allPoints.length} (expect 18)\n'
+      result =
+          'Categories: ${categories.length} (expect 4)\n'
+          'All points: ${allPoints.length} (expect 18, or 19 with a 3rd clothing point)\n'
           'Electronics points: ${electronics.length} (expect 11)\n'
-          'Eco points total: $total (+50 each run)';
+          'Saubagya latitude: ${saubagya.latitude} (expect 7.062915)\n'
+          'Eco points total: $total (carries on from before, +50 each run)';
     });
   }
 
