@@ -17,9 +17,10 @@ class _PointsScreenState extends State<PointsScreen>
   int _total = 0;
   List<Map<String, dynamic>> _activities = [];
   bool _loading = true;
-  bool _recording = false;
+  bool _loadInProgress = false;
+  bool _reloadRequested = false;
+  bool? _wasVisible;
   String? _error;
-  String _category = ecoPointsPerCategory.keys.first;
 
   DBHelper get _database => widget.database ?? DBHelper();
 
@@ -31,6 +32,18 @@ class _PointsScreenState extends State<PointsScreen>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // IndexedStack publishes visibility without needing a parent callback.
+    final visible = Visibility.of(context);
+    final becameVisible = _wasVisible == false && visible;
+    _wasVisible = visible;
+    if (becameVisible) {
+      _loadPoints();
+    }
+  }
+
+  @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -38,12 +51,18 @@ class _PointsScreenState extends State<PointsScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && !_loading && !_recording) {
+    if (state == AppLifecycleState.resumed && (_wasVisible ?? true)) {
       _loadPoints();
     }
   }
 
   Future<void> _loadPoints() async {
+    if (!mounted) return;
+    if (_loadInProgress) {
+      _reloadRequested = true;
+      return;
+    }
+    _loadInProgress = true;
     setState(() {
       _loading = true;
       _error = null;
@@ -63,57 +82,12 @@ class _PointsScreenState extends State<PointsScreen>
         _error = 'Could not load Eco Points. Please try again.';
         _loading = false;
       });
-    }
-  }
-
-  Future<void> _markAsDisposed() async {
-    if (_recording || _loading || _error != null) return;
-    setState(() => _recording = true);
-    final category = _category;
-    try {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Confirm disposal'),
-          content: Text(
-            'Have you disposed of this $category item? '
-            'Confirm to earn ${ecoPointsPerCategory[category]} Eco Points.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Confirm'),
-            ),
-          ],
-        ),
-      );
-      if (confirmed != true || !mounted) return;
-      final earned = await _database.addEcoPoints(category);
-      if (!mounted) return;
-      await _loadPoints();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _error == null
-                ? 'Disposal recorded. +$earned Eco Points!'
-                : 'Disposal saved. Refresh to load your updated balance.',
-          ),
-        ),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not record disposal. Please try again.'),
-        ),
-      );
     } finally {
-      if (mounted) setState(() => _recording = false);
+      _loadInProgress = false;
+      if (_reloadRequested && mounted) {
+        _reloadRequested = false;
+        await _loadPoints();
+      }
     }
   }
 
@@ -135,7 +109,13 @@ class _PointsScreenState extends State<PointsScreen>
 
   @override
   Widget build(BuildContext context) {
-    final remaining = (_rewardTarget - _total).clamp(0, _rewardTarget);
+    final remaining = (_rewardTarget - _total).clamp(
+      0,
+      _rewardTarget > 0 ? _rewardTarget : 0,
+    );
+    final progress = _rewardTarget > 0
+        ? (_total / _rewardTarget).clamp(0.0, 1.0)
+        : 0.0;
     return Scaffold(
       backgroundColor: const Color(0xFFF4F8F4),
       appBar: AppBar(
@@ -146,7 +126,7 @@ class _PointsScreenState extends State<PointsScreen>
         actions: [
           IconButton(
             tooltip: 'Refresh points',
-            onPressed: _loading || _recording ? null : _loadPoints,
+            onPressed: _loading ? null : _loadPoints,
             icon: const Icon(Icons.refresh),
           ),
         ],
@@ -280,7 +260,7 @@ class _PointsScreenState extends State<PointsScreen>
                           ClipRRect(
                             borderRadius: BorderRadius.circular(8),
                             child: LinearProgressIndicator(
-                              value: (_total / _rewardTarget).clamp(0.0, 1.0),
+                              value: progress,
                               minHeight: 10,
                               backgroundColor: Colors.green.shade50,
                               color: Colors.green,
@@ -300,54 +280,6 @@ class _PointsScreenState extends State<PointsScreen>
                       ),
                     ),
 
-                    const SizedBox(height: 20),
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            const Text(
-                              'Record a disposal',
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            DropdownButtonFormField<String>(
-                              initialValue: _category,
-                              decoration: const InputDecoration(
-                                labelText: 'Disposed category',
-                              ),
-                              items: ecoPointsPerCategory.entries.map((entry) {
-                                return DropdownMenuItem(
-                                  value: entry.key,
-                                  child: Text(
-                                    '${entry.key} (+${entry.value} points)',
-                                  ),
-                                );
-                              }).toList(),
-                              onChanged: _recording
-                                  ? null
-                                  : (value) {
-                                      if (value != null) {
-                                        setState(() => _category = value);
-                                      }
-                                    },
-                            ),
-                            const SizedBox(height: 12),
-                            FilledButton.icon(
-                              onPressed: _recording ? null : _markAsDisposed,
-                              icon: const Icon(Icons.recycling),
-                              label: Text(
-                                _recording ? 'Saving...' : 'Mark as Disposed',
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
                     const SizedBox(height: 30),
 
                     const Text(
@@ -361,7 +293,7 @@ class _PointsScreenState extends State<PointsScreen>
                     const SizedBox(height: 15),
 
                     if (_activities.isEmpty)
-                      const Text('No disposals recorded yet.')
+                      const Text('No activity yet')
                     else
                       ListView.separated(
                         shrinkWrap: true,
