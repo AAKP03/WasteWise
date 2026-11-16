@@ -1,5 +1,6 @@
 
 import 'package:flutter/material.dart';
+import 'category_screen.dart';
 
 class GuideScreen extends StatelessWidget {
   final String categoryName;
@@ -42,6 +43,11 @@ class GuideScreen extends StatelessWidget {
       'No disposal guidance is currently available.',
     ];
 
+    final category = CategoryScreen.categories.firstWhere(
+          (c) => c['name'] == categoryName,
+      orElse: () => {'icon': Icons.eco, 'color': Colors.green.shade700},
+    );
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Disposal Guide'),
@@ -51,9 +57,9 @@ class GuideScreen extends StatelessWidget {
         padding: const EdgeInsets.all(20),
         children: [
           Icon(
-            Icons.eco,
+            category['icon'] as IconData,
             size: 60,
-            color: Colors.green.shade700,
+            color: category['color'] as Color,
           ),
 
           const SizedBox(height: 16),
