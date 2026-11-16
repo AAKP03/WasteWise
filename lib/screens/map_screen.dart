@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -7,15 +9,19 @@ import 'package:url_launcher/url_launcher.dart';
 import '../services/location_service.dart';
 import '../data/db_helper.dart';
 import '../models/disposal_point.dart';
+import 'points_screen.dart' show WasteWiseStatusCard, wasteCategoryLabel;
 
 class MapScreen extends StatefulWidget {
-  const MapScreen({super.key});
+  const MapScreen({super.key, this.database, this.locationProvider});
+
+  final DBHelper? database;
+  final Future<Position?> Function()? locationProvider;
 
   @override
   State<MapScreen> createState() => _MapScreenState();
 }
 
-class _MapScreenState extends State<MapScreen> {
+class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   Position? _currentPosition;
   bool _isLoading = true;
   String? _errorMessage;
@@ -25,6 +31,17 @@ class _MapScreenState extends State<MapScreen> {
   bool _mapReady = false;
   bool _savingDisposal = false;
   int _pointsRequest = 0;
+  bool _mapVisible = true;
+  int _tileGeneration = 0;
+  bool _tilesLoading = true;
+  bool _tilesSlow = false;
+  bool _tileStateScheduled = false;
+  final Set<String> _failedTiles = {};
+  Timer? _tileTimer;
+  Timer? _locationTimer;
+  Completer<Position?>? _locationWaiter;
+
+  DBHelper get _database => widget.database ?? DBHelper();
   static const _filterCategories = [
     'Electronics',
     'Batteries',
@@ -39,58 +56,131 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadPoints();
     _fetchLocation();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _mapVisible = Visibility.of(context);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _mapVisible) _fetchLocation();
+  }
+
   Future<void> _loadPoints() async {
     final request = ++_pointsRequest;
+    _tileTimer?.cancel();
     setState(() {
       _isLoading = true;
       _mapReady = false;
+      _tileGeneration++;
+      _failedTiles.clear();
+      _tilesSlow = false;
+      _tilesLoading = true;
       _errorMessage = null;
     });
     try {
-      final points = await DBHelper().getDisposalPoints(
-        category: _selectedCategory,
-      );
+      final points = await _database
+          .getDisposalPoints(category: _selectedCategory)
+          .timeout(const Duration(seconds: 20));
       if (!mounted || request != _pointsRequest) return;
       _sortByDistance(points);
       setState(() {
         disposalPoints = points;
         _isLoading = false;
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted || request != _pointsRequest) return;
       setState(() {
         disposalPoints = [];
-        _errorMessage = 'Could not load disposal points. Please try again.';
+        _errorMessage = error is TimeoutException
+            ? 'Loading disposal points is taking longer than expected. Please retry.'
+            : 'Could not load disposal points. Please try again.';
         _isLoading = false;
       });
     }
   }
 
+  // Same 20-second deadline as Future.timeout, with a disposable timer.
+  Future<Position?> _locationWithTimeout() {
+    final waiter = Completer<Position?>();
+    _locationWaiter = waiter;
+    final timer = Timer(const Duration(seconds: 20), () {
+      if (!waiter.isCompleted) {
+        waiter.completeError(TimeoutException('Location request timed out.'));
+      }
+    });
+    _locationTimer = timer;
+    Future<Position?>.sync(
+      widget.locationProvider ?? LocationService.getCurrentPosition,
+    ).then(
+      (position) {
+        if (!waiter.isCompleted) waiter.complete(position);
+      },
+      onError: (Object error, StackTrace stack) {
+        if (!waiter.isCompleted) waiter.completeError(error, stack);
+      },
+    );
+    return waiter.future.whenComplete(() {
+      timer.cancel();
+      if (identical(_locationTimer, timer)) _locationTimer = null;
+      if (identical(_locationWaiter, waiter)) _locationWaiter = null;
+    });
+  }
+
   Future<void> _fetchLocation() async {
+    if (!mounted || _locating) return;
     setState(() {
       _locating = true;
       _locationMessage = null;
     });
     Position? position;
+    String? message;
     try {
-      position = await LocationService.getCurrentPosition().timeout(
-        const Duration(seconds: 20),
-      );
+      position = await _locationWithTimeout();
+      if (!mounted) return;
+      if (position == null) {
+        message = 'Location unavailable. You can still browse points without distances.';
+        if (widget.locationProvider == null) {
+          final enabled = await Geolocator.isLocationServiceEnabled().timeout(
+            const Duration(seconds: 3),
+          );
+          if (!enabled) {
+            message =
+                'GPS is off. Turn on location in phone Settings, then retry. '
+                'The location list is still available.';
+          } else {
+            final permission = await Geolocator.checkPermission().timeout(
+              const Duration(seconds: 3),
+            );
+            if (permission == LocationPermission.denied ||
+                permission == LocationPermission.deniedForever) {
+              message =
+                  'Location permission is denied. Allow it in phone Settings, '
+                  'then retry. You can still browse points without distances.';
+            }
+          }
+        }
+      }
+    } on TimeoutException {
+      message =
+          'Finding your location is taking longer than expected. '
+          'Retry GPS; you can still browse the location list.';
     } catch (_) {
-      // A location failure must not discard locations loaded from SQLite.
+      message =
+          'Could not get your location. Check GPS and permissions, then retry. '
+          'The location list is still available.';
     }
     if (!mounted) return;
     setState(() {
       _currentPosition = position;
       _locating = false;
-      _locationMessage = position == null
-          ? 'Location unavailable. You can still browse disposal points; '
-                'distances are unavailable.'
-          : null;
+      _locationMessage = message;
       _sortByDistance(disposalPoints);
     });
     if (position != null && _mapReady) {
@@ -115,8 +205,69 @@ class _MapScreenState extends State<MapScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _tileTimer?.cancel();
+    _locationTimer?.cancel();
+    final waiter = _locationWaiter;
+    if (waiter != null && !waiter.isCompleted) waiter.complete(null);
     _mapController.dispose();
     super.dispose();
+  }
+
+  void _scheduleTileState() {
+    if (_tileStateScheduled) return;
+    _tileStateScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _tileStateScheduled = false;
+      if (mounted) setState(() {});
+    });
+  }
+
+  void _tileSucceeded(TileImage tile, int generation) {
+    if (!mounted ||
+        generation != _tileGeneration ||
+        tile.loadError ||
+        tile.loadFinishedAt == null) {
+      return;
+    }
+    final changed =
+        _tilesLoading ||
+        _tilesSlow ||
+        _failedTiles.contains(tile.coordinates.toString());
+    _tileTimer?.cancel();
+    _tilesLoading = false;
+    _tilesSlow = false;
+    _failedTiles.remove(tile.coordinates.toString());
+    if (changed) _scheduleTileState();
+  }
+
+  void _tileFailed(TileImage tile, int generation) {
+    if (!mounted || generation != _tileGeneration) return;
+    _tileTimer?.cancel();
+    _tilesLoading = false;
+    if (_failedTiles.add(tile.coordinates.toString())) _scheduleTileState();
+  }
+
+  void _startTileTimer() {
+    _tileTimer?.cancel();
+    if (!_tilesLoading) return;
+    _tileTimer = Timer(const Duration(seconds: 20), () {
+      if (!mounted || !_tilesLoading) return;
+      setState(() {
+        _tilesLoading = false;
+        _tilesSlow = true;
+      });
+    });
+  }
+
+  void _retryTiles() {
+    setState(() {
+      _tileGeneration++;
+      _failedTiles.clear();
+      _tilesSlow = false;
+      _tilesLoading = true;
+    });
+    _startTileTimer();
   }
 
   // Calculate distance from current location
@@ -167,6 +318,8 @@ class _MapScreenState extends State<MapScreen> {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
       backgroundColor: Colors.transparent,
       builder: (context) => _DisposalPointDetails(
         point: point,
@@ -212,7 +365,7 @@ class _MapScreenState extends State<MapScreen> {
         ),
       );
       if (confirmed != true || !mounted) return false;
-      final earned = await DBHelper().addEcoPoints(category);
+      final earned = await _database.addEcoPoints(category);
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -236,14 +389,19 @@ class _MapScreenState extends State<MapScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Scaffold(
       backgroundColor: const Color(0xFFF4F8F4),
 
       appBar: AppBar(
-        title: const Text('Nearby Disposal Points'),
+        title: const Text(
+          'Nearby Disposal Points',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         centerTitle: true,
-        backgroundColor: Colors.green,
-        foregroundColor: Colors.white,
+        backgroundColor: colors.primary,
+        foregroundColor: colors.onPrimary,
       ),
 
       body: SafeArea(
@@ -262,7 +420,11 @@ class _MapScreenState extends State<MapScreen> {
                           return Padding(
                             padding: const EdgeInsets.only(right: 8),
                             child: FilterChip(
-                              label: Text(category ?? 'All'),
+                              label: Text(
+                                category == null
+                                    ? 'All'
+                                    : wasteCategoryLabel(category),
+                              ),
                               selected: _selectedCategory == category,
                               onSelected: (_) {
                                 if (_selectedCategory == category) return;
@@ -278,20 +440,23 @@ class _MapScreenState extends State<MapScreen> {
                   if (_locating)
                     const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 16),
-                      child: Text('Finding your location...'),
-                    ),
-                  if (_locationMessage != null)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Row(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(child: Text(_locationMessage!)),
-                          TextButton(
-                            onPressed: _locating ? null : _fetchLocation,
-                            child: const Text('Retry GPS'),
+                          LinearProgressIndicator(
+                            semanticsLabel: 'Finding your location',
                           ),
+                          SizedBox(height: 8),
+                          Text('Finding your location...'),
                         ],
                       ),
+                    ),
+                  if (_locationMessage != null)
+                    WasteWiseStatusCard(
+                      icon: Icons.location_off_outlined,
+                      message: _locationMessage!,
+                      onRetry: _fetchLocation,
+                      retryLabel: 'Retry GPS',
                     ),
 
                   // Map section
@@ -319,6 +484,24 @@ class _MapScreenState extends State<MapScreen> {
                     ),
                   ),
 
+                  if (!_isLoading &&
+                      _errorMessage == null &&
+                      (_tilesLoading || _tilesSlow || _failedTiles.isNotEmpty))
+                    WasteWiseStatusCard(
+                      loading: _tilesLoading && _failedTiles.isEmpty,
+                      icon: Icons.cloud_off_outlined,
+                      message: _failedTiles.isNotEmpty
+                          ? 'Some map tiles could not load. Check your internet connection. '
+                                'The location list and saved points are still available.'
+                          : _tilesSlow
+                          ? 'Map tiles are taking longer than expected. Check your connection and retry.'
+                          : 'Loading map tiles...',
+                      onRetry: _tilesSlow || _failedTiles.isNotEmpty
+                          ? _retryTiles
+                          : null,
+                      retryLabel: 'Retry map',
+                    ),
+
                   // Nearby locations heading
                   const Padding(
                     padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -338,20 +521,28 @@ class _MapScreenState extends State<MapScreen> {
             if (_isLoading)
               const SliverFillRemaining(
                 hasScrollBody: false,
-                child: Center(child: CircularProgressIndicator()),
+                child: WasteWiseStatusCard(
+                  loading: true,
+                  message: 'Loading disposal points...',
+                ),
               )
             else if (_errorMessage != null)
               SliverFillRemaining(
                 hasScrollBody: false,
-                child: Center(
-                  child: Text(_errorMessage!, textAlign: TextAlign.center),
+                child: WasteWiseStatusCard(
+                  icon: Icons.error_outline,
+                  message: _errorMessage!,
+                  onRetry: _loadPoints,
                 ),
               )
             else if (disposalPoints.isEmpty)
-              const SliverFillRemaining(
+              SliverFillRemaining(
                 hasScrollBody: false,
-                child: Center(
-                  child: Text('No disposal points found for this category.'),
+                child: WasteWiseStatusCard(
+                  icon: Icons.location_searching,
+                  message: 'No disposal points found for this category.',
+                  onRetry: _loadPoints,
+                  retryLabel: 'Retry filter',
                 ),
               )
             else
@@ -377,7 +568,7 @@ class _MapScreenState extends State<MapScreen> {
                             children: [
                               CircleAvatar(
                                 radius: 24,
-                                backgroundColor: Colors.green.shade100,
+                                backgroundColor: const Color(0xFFEFF6FF),
                                 child: const Icon(
                                   Icons.location_on,
                                   color: Colors.green,
@@ -427,7 +618,7 @@ class _MapScreenState extends State<MapScreen> {
                                                   BorderRadius.circular(20),
                                             ),
                                             child: Text(
-                                              category,
+                                              wasteCategoryLabel(category),
                                               style: TextStyle(
                                                 color: Colors.green.shade800,
                                                 fontSize: 12,
@@ -446,12 +637,14 @@ class _MapScreenState extends State<MapScreen> {
                                               color: Colors.green.shade700,
                                             ),
                                             const SizedBox(width: 4),
-                                            Text(
-                                              _getDistance(point),
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.green.shade700,
-                                                fontSize: 13,
+                                            Flexible(
+                                              child: Text(
+                                                _getDistance(point),
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.green.shade700,
+                                                  fontSize: 13,
+                                                ),
                                               ),
                                             ),
                                           ],
@@ -476,6 +669,7 @@ class _MapScreenState extends State<MapScreen> {
       // Current location button
       floatingActionButton: _currentPosition != null && _mapReady
           ? FloatingActionButton(
+              tooltip: 'Center map on your location',
               onPressed: () {
                 _mapController.move(
                   LatLng(
@@ -485,7 +679,7 @@ class _MapScreenState extends State<MapScreen> {
                   15.0,
                 );
               },
-              backgroundColor: Colors.green,
+              backgroundColor: colors.primary,
               child: const Icon(Icons.my_location, color: Colors.white),
             )
           : null,
@@ -495,54 +689,21 @@ class _MapScreenState extends State<MapScreen> {
   // Build OpenStreetMap
   Widget _buildMap() {
     if (_isLoading) {
-      return Container(
-        color: Colors.green.shade50,
-        child: const Center(
-          child: CircularProgressIndicator(color: Colors.green),
-        ),
+      return const WasteWiseStatusCard(
+        loading: true,
+        message: 'Loading disposal points...',
       );
     }
-
     if (_errorMessage != null) {
-      return Container(
-        color: Colors.green.shade50,
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.location_off, size: 48, color: Colors.red),
-
-              const SizedBox(height: 8),
-
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Text(
-                  _errorMessage!,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.red, fontSize: 12),
-                ),
-              ),
-
-              TextButton.icon(
-                onPressed: () {
-                  setState(() {
-                    _isLoading = true;
-                    _errorMessage = null;
-                  });
-
-                  _loadPoints();
-                },
-                icon: const Icon(Icons.refresh, color: Colors.green),
-                label: const Text(
-                  'Retry',
-                  style: TextStyle(color: Colors.green),
-                ),
-              ),
-            ],
-          ),
+      return const Center(
+        child: Icon(
+          Icons.map_outlined,
+          size: 48,
+          semanticLabel: 'Map unavailable while locations could not load',
         ),
       );
     }
+    final generation = _tileGeneration;
 
     final position = _currentPosition;
     final userLatLng = position == null
@@ -566,6 +727,7 @@ class _MapScreenState extends State<MapScreen> {
         initialCenter: center,
         onMapReady: () {
           if (mounted) setState(() => _mapReady = true);
+          _startTileTimer();
         },
         initialZoom: 15.0,
       ),
@@ -573,6 +735,14 @@ class _MapScreenState extends State<MapScreen> {
       children: [
         // OpenStreetMap tiles
         TileLayer(
+          key: ValueKey(generation),
+          errorTileCallback: (tile, error, stack) =>
+              _tileFailed(tile, generation),
+          tileBuilder: (context, child, tile) {
+            _tileSucceeded(tile, generation);
+            return child;
+          },
+          evictErrorTileStrategy: EvictErrorTileStrategy.dispose,
           urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
           userAgentPackageName: 'com.wastewise.wastewise',
         ),
@@ -592,6 +762,7 @@ class _MapScreenState extends State<MapScreen> {
                 height: 48,
                 child: const Icon(
                   Icons.my_location,
+                  semanticLabel: 'Your current location',
                   color: Colors.blue,
                   size: 40,
                 ),
@@ -603,11 +774,11 @@ class _MapScreenState extends State<MapScreen> {
                 point: LatLng(point.latitude, point.longitude),
                 width: 45,
                 height: 45,
-                child: GestureDetector(
-                  onTap: () {
-                    _showPointDetails(point);
-                  },
-                  child: const Icon(
+                child: IconButton(
+                  tooltip: 'Open details for ${point.name}',
+                  padding: EdgeInsets.zero,
+                  onPressed: () => _showPointDetails(point),
+                  icon: const Icon(
                     Icons.location_pin,
                     color: Colors.green,
                     size: 40,
@@ -665,6 +836,7 @@ class _DisposalPointDetailsState extends State<_DisposalPointDetails> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final point = widget.point;
     return PopScope(
       canPop: !_saving,
@@ -686,7 +858,7 @@ class _DisposalPointDetailsState extends State<_DisposalPointDetails> {
                 Row(
                   children: [
                     CircleAvatar(
-                      backgroundColor: Colors.green.shade100,
+                      backgroundColor: const Color(0xFFEFF6FF),
                       child: const Icon(Icons.location_on, color: Colors.green),
                     ),
                     const SizedBox(width: 12),
@@ -723,7 +895,7 @@ class _DisposalPointDetailsState extends State<_DisposalPointDetails> {
                   children: point.categoriesAccepted
                       .map(
                         (category) => Chip(
-                          label: Text(category),
+                          label: Text(wasteCategoryLabel(category)),
                           backgroundColor: Colors.green.shade50,
                         ),
                       )
@@ -753,8 +925,8 @@ class _DisposalPointDetailsState extends State<_DisposalPointDetails> {
                     icon: const Icon(Icons.directions),
                     label: const Text('Get Directions'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
+                      backgroundColor: colors.primary,
+                      foregroundColor: colors.onPrimary,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
                   ),
@@ -766,6 +938,7 @@ class _DisposalPointDetailsState extends State<_DisposalPointDetails> {
                   )
                 else ...[
                   DropdownButtonFormField<String>(
+                    isExpanded: true,
                     initialValue: _category,
                     decoration: const InputDecoration(
                       labelText: 'Disposed category',
@@ -774,7 +947,7 @@ class _DisposalPointDetailsState extends State<_DisposalPointDetails> {
                         .map(
                           (category) => DropdownMenuItem(
                             value: category,
-                            child: Text(category),
+                            child: Text(wasteCategoryLabel(category)),
                           ),
                         )
                         .toList(),
