@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'screens/category_screen.dart';
 import 'screens/map_screen.dart';
 import 'screens/points_screen.dart';
@@ -43,10 +44,7 @@ class _MainNavigationState extends State<MainNavigation> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
-      ),
+      body: IndexedStack(index: _currentIndex, children: _screens),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
         onDestinationSelected: (index) {
@@ -57,14 +55,8 @@ class _MainNavigationState extends State<MainNavigation> {
             icon: Icon(Icons.recycling),
             label: 'Categories',
           ),
-          NavigationDestination(
-            icon: Icon(Icons.map),
-            label: 'Map',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.eco),
-            label: 'Eco Points',
-          ),
+          NavigationDestination(icon: Icon(Icons.map), label: 'Map'),
+          NavigationDestination(icon: Icon(Icons.eco), label: 'Eco Points'),
         ],
       ),
     );
