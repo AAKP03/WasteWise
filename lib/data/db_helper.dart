@@ -14,6 +14,9 @@ const Map<String, int> ecoPointsPerCategory = {
   'Plastic': 15,
 };
 
+// Category name used for generic balance adjustments in eco_points_log.
+const String adjustmentCategory = 'Adjustment';
+
 class DBHelper {
   static final DBHelper _instance = DBHelper._internal();
   factory DBHelper() => _instance;
@@ -31,7 +34,7 @@ class DBHelper {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, 'wastewise.db');
 
-       return await openDatabase(
+    return await openDatabase(
       path,
       version: 3,
       onCreate: _onCreate,
@@ -83,7 +86,7 @@ class DBHelper {
     await _seedData(db);
   }
 
-  // Runs once, right after the tables are created.
+  // Runs on first launch, and again whenever the database version is bumped.
   Future<void> _seedData(Database db) async {
     final batch = db.batch();
     for (final c in wasteCategories) {
@@ -109,7 +112,9 @@ class DBHelper {
     final rows = await db.query('disposal_points');
     final points = rows.map(DisposalPoint.fromMap).toList();
     if (category == null) return points;
-    return points.where((p) => p.categoriesAccepted.contains(category)).toList();
+    return points
+        .where((p) => p.categoriesAccepted.contains(category))
+        .toList();
   }
 
   // ---------- Eco Points ----------
@@ -134,9 +139,42 @@ class DBHelper {
     return (result.first['total'] as num).toInt();
   }
 
+  /// Records a balance adjustment (positive or negative).
+  /// The total never goes below 0. Returns the new total.
+  Future<int> addAdjustment(int points) async {
+    final db = await database;
+    return db.transaction((txn) async {
+      final result = await txn.rawQuery(
+        'SELECT COALESCE(SUM(points_earned), 0) AS total FROM eco_points_log',
+      );
+      final current = (result.first['total'] as num).toInt();
+      // Clamp so a negative adjustment can't push the balance below 0.
+      final applied = (current + points) < 0 ? -current : points;
+      if (applied != 0) {
+        await txn.insert('eco_points_log', {
+          'category_name': adjustmentCategory,
+          'points_earned': applied,
+          'disposed_at': DateTime.now().toIso8601String(),
+        });
+      }
+      return current + applied;
+    });
+  }
+
   /// Newest first, for a "recent activity" list.
   Future<List<Map<String, dynamic>>> getEcoPointsLog() async {
     final db = await database;
     return db.query('eco_points_log', orderBy: 'disposed_at DESC');
+  }
+
+  /// Same list, without "Adjustment" rows.
+  Future<List<Map<String, dynamic>>> getEcoPointsLogWithoutAdjustments() async {
+    final db = await database;
+    return db.query(
+      'eco_points_log',
+      where: 'category_name != ?',
+      whereArgs: [adjustmentCategory],
+      orderBy: 'disposed_at DESC',
+    );
   }
 }
