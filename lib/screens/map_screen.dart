@@ -21,7 +21,7 @@ class MapScreen extends StatefulWidget {
   State<MapScreen> createState() => _MapScreenState();
 }
 
-class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
+class _MapScreenState extends State<MapScreen> {
   Position? _currentPosition;
   bool _isLoading = true;
   String? _errorMessage;
@@ -31,17 +31,19 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   bool _mapReady = false;
   bool _savingDisposal = false;
   int _pointsRequest = 0;
-  bool _mapVisible = true;
   int _tileGeneration = 0;
   bool _tilesLoading = true;
   bool _tilesSlow = false;
   bool _tileStateScheduled = false;
+
   final Set<String> _failedTiles = {};
+
   Timer? _tileTimer;
   Timer? _locationTimer;
   Completer<Position?>? _locationWaiter;
 
   DBHelper get _database => widget.database ?? DBHelper();
+
   static const _filterCategories = [
     'Electronics',
     'Batteries',
@@ -53,28 +55,24 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
   List<DisposalPoint> disposalPoints = [];
 
+  // Do not request GPS permission automatically when the screen opens.
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
+
+    _locationMessage =
+        'Location access is needed to show your current location. '
+        'Tap Retry GPS to allow access.';
+
     _loadPoints();
-    _fetchLocation();
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _mapVisible = Visibility.of(context);
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && _mapVisible) _fetchLocation();
-  }
-
+  // Load disposal points from the database.
   Future<void> _loadPoints() async {
     final request = ++_pointsRequest;
+
     _tileTimer?.cancel();
+
     setState(() {
       _isLoading = true;
       _mapReady = false;
@@ -84,72 +82,105 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       _tilesLoading = true;
       _errorMessage = null;
     });
+
     try {
       final points = await _database
           .getDisposalPoints(category: _selectedCategory)
           .timeout(const Duration(seconds: 20));
+
       if (!mounted || request != _pointsRequest) return;
+
       _sortByDistance(points);
+
       setState(() {
         disposalPoints = points;
         _isLoading = false;
       });
     } catch (error) {
       if (!mounted || request != _pointsRequest) return;
+
       setState(() {
         disposalPoints = [];
+
         _errorMessage = error is TimeoutException
             ? 'Loading disposal points is taking longer than expected. Please retry.'
             : 'Could not load disposal points. Please try again.';
+
         _isLoading = false;
       });
     }
   }
 
-  // Same 20-second deadline as Future.timeout, with a disposable timer.
+  // Location request with a 20-second timeout.
   Future<Position?> _locationWithTimeout() {
     final waiter = Completer<Position?>();
+
     _locationWaiter = waiter;
+
     final timer = Timer(const Duration(seconds: 20), () {
       if (!waiter.isCompleted) {
-        waiter.completeError(TimeoutException('Location request timed out.'));
+        waiter.completeError(
+          TimeoutException('Location request timed out.'),
+        );
       }
     });
+
     _locationTimer = timer;
+
     Future<Position?>.sync(
       widget.locationProvider ?? LocationService.getCurrentPosition,
     ).then(
       (position) {
-        if (!waiter.isCompleted) waiter.complete(position);
+        if (!waiter.isCompleted) {
+          waiter.complete(position);
+        }
       },
       onError: (Object error, StackTrace stack) {
-        if (!waiter.isCompleted) waiter.completeError(error, stack);
+        if (!waiter.isCompleted) {
+          waiter.completeError(error, stack);
+        }
       },
     );
+
     return waiter.future.whenComplete(() {
       timer.cancel();
-      if (identical(_locationTimer, timer)) _locationTimer = null;
-      if (identical(_locationWaiter, waiter)) _locationWaiter = null;
+
+      if (identical(_locationTimer, timer)) {
+        _locationTimer = null;
+      }
+
+      if (identical(_locationWaiter, waiter)) {
+        _locationWaiter = null;
+      }
     });
   }
 
+  // Request current location only when the user taps Retry GPS.
   Future<void> _fetchLocation() async {
     if (!mounted || _locating) return;
+
     setState(() {
       _locating = true;
       _locationMessage = null;
     });
+
     Position? position;
     String? message;
+
     try {
       position = await _locationWithTimeout();
+
       if (!mounted) return;
+
       if (position == null) {
-        message = 'Location unavailable. You can still browse points without distances.';
+        message =
+            'Location unavailable. You can still browse points without distances.';
+
         if (widget.locationProvider == null) {
           final enabled = await Geolocator.isLocationServiceEnabled().timeout(
             const Duration(seconds: 3),
           );
+
           if (!enabled) {
             message =
                 'GPS is off. Turn on location in phone Settings, then retry. '
@@ -158,6 +189,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
             final permission = await Geolocator.checkPermission().timeout(
               const Duration(seconds: 3),
             );
+
             if (permission == LocationPermission.denied ||
                 permission == LocationPermission.deniedForever) {
               message =
@@ -176,50 +208,76 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           'Could not get your location. Check GPS and permissions, then retry. '
           'The location list is still available.';
     }
+
     if (!mounted) return;
+
     setState(() {
       _currentPosition = position;
       _locating = false;
       _locationMessage = message;
+
       _sortByDistance(disposalPoints);
     });
+
     if (position != null && _mapReady) {
-      _mapController.move(LatLng(position.latitude, position.longitude), 15);
+      _mapController.move(
+        LatLng(position.latitude, position.longitude),
+        15,
+      );
     }
   }
 
+  // Sort disposal points by nearest distance.
   void _sortByDistance(List<DisposalPoint> points) {
     final position = _currentPosition;
+
     if (position == null) return;
-    double distance(DisposalPoint point) => LocationService.distanceInKm(
-      position.latitude,
-      position.longitude,
-      point.latitude,
-      point.longitude,
-    );
+
+    double distance(DisposalPoint point) =>
+        LocationService.distanceInKm(
+          position.latitude,
+          position.longitude,
+          point.latitude,
+          point.longitude,
+        );
+
     points.sort((a, b) {
       final comparison = distance(a).compareTo(distance(b));
-      return comparison != 0 ? comparison : a.name.compareTo(b.name);
+
+      return comparison != 0
+          ? comparison
+          : a.name.compareTo(b.name);
     });
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _tileTimer?.cancel();
     _locationTimer?.cancel();
+
     final waiter = _locationWaiter;
-    if (waiter != null && !waiter.isCompleted) waiter.complete(null);
+
+    if (waiter != null && !waiter.isCompleted) {
+      waiter.complete(null);
+    }
+
     _mapController.dispose();
+
     super.dispose();
   }
 
+  // Schedule map tile state updates.
   void _scheduleTileState() {
     if (_tileStateScheduled) return;
+
     _tileStateScheduled = true;
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _tileStateScheduled = false;
-      if (mounted) setState(() {});
+
+      if (mounted) {
+        setState(() {});
+      }
     });
   }
 
@@ -230,29 +288,43 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         tile.loadFinishedAt == null) {
       return;
     }
-    final changed =
-        _tilesLoading ||
+
+    final changed = _tilesLoading ||
         _tilesSlow ||
         _failedTiles.contains(tile.coordinates.toString());
+
     _tileTimer?.cancel();
+
     _tilesLoading = false;
     _tilesSlow = false;
+
     _failedTiles.remove(tile.coordinates.toString());
-    if (changed) _scheduleTileState();
+
+    if (changed) {
+      _scheduleTileState();
+    }
   }
 
   void _tileFailed(TileImage tile, int generation) {
     if (!mounted || generation != _tileGeneration) return;
+
     _tileTimer?.cancel();
+
     _tilesLoading = false;
-    if (_failedTiles.add(tile.coordinates.toString())) _scheduleTileState();
+
+    if (_failedTiles.add(tile.coordinates.toString())) {
+      _scheduleTileState();
+    }
   }
 
   void _startTileTimer() {
     _tileTimer?.cancel();
+
     if (!_tilesLoading) return;
+
     _tileTimer = Timer(const Duration(seconds: 20), () {
       if (!mounted || !_tilesLoading) return;
+
       setState(() {
         _tilesLoading = false;
         _tilesSlow = true;
@@ -267,10 +339,11 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       _tilesSlow = false;
       _tilesLoading = true;
     });
+
     _startTileTimer();
   }
 
-  // Calculate distance from current location
+  // Calculate distance from current location.
   String _getDistance(DisposalPoint point) {
     if (_currentPosition == null) {
       return 'Distance unavailable';
@@ -286,7 +359,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     return '${km.toStringAsFixed(1)} km';
   }
 
-  // Open Google Maps with the selected disposal point
+  // Open Google Maps with the selected disposal point.
   Future<void> _openDirections(DisposalPoint point) async {
     final Uri googleMapsUrl = Uri.parse(
       'https://www.google.com/maps/dir/?api=1'
@@ -302,18 +375,23 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
       if (!launched && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open Google Maps.')),
+          const SnackBar(
+            content: Text('Could not open Google Maps.'),
+          ),
         );
       }
     } catch (e) {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error opening directions.')),
+        const SnackBar(
+          content: Text('Error opening directions.'),
+        ),
       );
     }
   }
 
+  // Show disposal point details.
   void _showPointDetails(DisposalPoint point) {
     showModalBottomSheet<void>(
       context: context,
@@ -330,11 +408,14 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     );
   }
 
+  // Record disposal and award Eco Points.
   Future<bool> _recordDisposal(String category) async {
-    // This lock survives dismissal/reopening of the details sheet.
     if (_savingDisposal) return false;
+
     _savingDisposal = true;
+
     var confirmationSent = false;
+
     try {
       final confirmed = await showDialog<bool>(
         context: context,
@@ -348,7 +429,9 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
             TextButton(
               onPressed: () {
                 if (confirmationSent) return;
+
                 confirmationSent = true;
+
                 Navigator.pop(context, false);
               },
               child: const Text('Cancel'),
@@ -356,7 +439,9 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
             FilledButton(
               onPressed: () {
                 if (confirmationSent) return;
+
                 confirmationSent = true;
+
                 Navigator.pop(context, true);
               },
               child: const Text('Confirm'),
@@ -364,23 +449,31 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           ],
         ),
       );
+
       if (confirmed != true || !mounted) return false;
+
       final earned = await _database.addEcoPoints(category);
+
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('+$earned Eco Points earned')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('+$earned Eco Points earned'),
+          ),
+        );
       }
-      // PointsScreen refreshes via Visibility.of when its tab is selected.
+
       return true;
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Could not record disposal. Please try again.'),
+            content: Text(
+              'Could not record disposal. Please try again.',
+            ),
           ),
         );
       }
+
       return false;
     } finally {
       _savingDisposal = false;
@@ -390,6 +483,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+
     return Scaffold(
       backgroundColor: const Color(0xFFF4F8F4),
 
@@ -411,6 +505,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Category filters.
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                     child: SingleChildScrollView(
@@ -428,7 +523,11 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                               selected: _selectedCategory == category,
                               onSelected: (_) {
                                 if (_selectedCategory == category) return;
-                                setState(() => _selectedCategory = category);
+
+                                setState(() {
+                                  _selectedCategory = category;
+                                });
+
                                 _loadPoints();
                               },
                             ),
@@ -437,6 +536,8 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                       ),
                     ),
                   ),
+
+                  // GPS loading indicator.
                   if (_locating)
                     const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 16),
@@ -451,6 +552,8 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                         ],
                       ),
                     ),
+
+                  // GPS status and Retry GPS button.
                   if (_locationMessage != null)
                     WasteWiseStatusCard(
                       icon: Icons.location_off_outlined,
@@ -459,17 +562,17 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                       retryLabel: 'Retry GPS',
                     ),
 
-                  // Map section
+                  // Map section.
                   Container(
                     width: double.infinity,
-                    height: (MediaQuery.sizeOf(context).height * 0.3).clamp(
-                      110.0,
-                      230.0,
-                    ),
+                    height: (MediaQuery.sizeOf(context).height * 0.3)
+                        .clamp(110.0, 230.0),
                     margin: const EdgeInsets.fromLTRB(16, 16, 16, 12),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.green.shade200),
+                      border: Border.all(
+                        color: Colors.green.shade200,
+                      ),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.green.withValues(alpha: 0.1),
@@ -484,25 +587,28 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                     ),
                   ),
 
+                  // Map tile status.
                   if (!_isLoading &&
                       _errorMessage == null &&
-                      (_tilesLoading || _tilesSlow || _failedTiles.isNotEmpty))
+                      (_tilesLoading ||
+                          _tilesSlow ||
+                          _failedTiles.isNotEmpty))
                     WasteWiseStatusCard(
                       loading: _tilesLoading && _failedTiles.isEmpty,
                       icon: Icons.cloud_off_outlined,
                       message: _failedTiles.isNotEmpty
                           ? 'Some map tiles could not load. Check your internet connection. '
-                                'The location list and saved points are still available.'
+                              'The location list and saved points are still available.'
                           : _tilesSlow
-                          ? 'Map tiles are taking longer than expected. Check your connection and retry.'
-                          : 'Loading map tiles...',
+                              ? 'Map tiles are taking longer than expected. Check your connection and retry.'
+                              : 'Loading map tiles...',
                       onRetry: _tilesSlow || _failedTiles.isNotEmpty
                           ? _retryTiles
                           : null,
                       retryLabel: 'Retry map',
                     ),
 
-                  // Nearby locations heading
+                  // Nearby locations heading.
                   const Padding(
                     padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
                     child: Text(
@@ -518,6 +624,8 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                 ],
               ),
             ),
+
+            // Loading state.
             if (_isLoading)
               const SliverFillRemaining(
                 hasScrollBody: false,
@@ -526,6 +634,8 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                   message: 'Loading disposal points...',
                 ),
               )
+
+            // Database error.
             else if (_errorMessage != null)
               SliverFillRemaining(
                 hasScrollBody: false,
@@ -535,6 +645,8 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                   onRetry: _loadPoints,
                 ),
               )
+
+            // Empty state.
             else if (disposalPoints.isEmpty)
               SliverFillRemaining(
                 hasScrollBody: false,
@@ -545,128 +657,137 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                   retryLabel: 'Retry filter',
                 ),
               )
+
+            // Disposal point list.
             else
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate((context, index) {
-                    final point = disposalPoints[index];
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final point = disposalPoints[index];
 
-                    return Card(
-                      elevation: 1.5,
-                      margin: const EdgeInsets.only(bottom: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(16),
-                        onTap: () => _showPointDetails(point),
-                        child: Padding(
-                          padding: const EdgeInsets.all(14),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              CircleAvatar(
-                                radius: 24,
-                                backgroundColor: const Color(0xFFEFF6FF),
-                                child: const Icon(
-                                  Icons.location_on,
-                                  color: Colors.green,
-                                  size: 26,
+                      return Card(
+                        elevation: 1.5,
+                        margin: const EdgeInsets.only(bottom: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(16),
+                          onTap: () => _showPointDetails(point),
+                          child: Padding(
+                            padding: const EdgeInsets.all(14),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                CircleAvatar(
+                                  radius: 24,
+                                  backgroundColor: const Color(0xFFEFF6FF),
+                                  child: const Icon(
+                                    Icons.location_on,
+                                    color: Colors.green,
+                                    size: 26,
+                                  ),
                                 ),
-                              ),
 
-                              const SizedBox(width: 14),
+                                const SizedBox(width: 14),
 
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      point.name,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-
-                                    const SizedBox(height: 6),
-
-                                    Text(
-                                      point.address,
-                                      style: TextStyle(
-                                        color: Colors.grey.shade700,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-
-                                    const SizedBox(height: 10),
-
-                                    Wrap(
-                                      spacing: 8,
-                                      runSpacing: 8,
-                                      children: [
-                                        ...point.categoriesAccepted.map(
-                                          (category) => Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 10,
-                                              vertical: 5,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: Colors.green.shade50,
-                                              borderRadius:
-                                                  BorderRadius.circular(20),
-                                            ),
-                                            child: Text(
-                                              wasteCategoryLabel(category),
-                                              style: TextStyle(
-                                                color: Colors.green.shade800,
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          ),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        point.name,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
                                         ),
+                                      ),
 
-                                        Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              Icons.near_me,
-                                              size: 16,
-                                              color: Colors.green.shade700,
-                                            ),
-                                            const SizedBox(width: 4),
-                                            Flexible(
+                                      const SizedBox(height: 6),
+
+                                      Text(
+                                        point.address,
+                                        style: TextStyle(
+                                          color: Colors.grey.shade700,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+
+                                      const SizedBox(height: 10),
+
+                                      Wrap(
+                                        spacing: 8,
+                                        runSpacing: 8,
+                                        children: [
+                                          ...point.categoriesAccepted.map(
+                                            (category) => Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 10,
+                                                vertical: 5,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: Colors.green.shade50,
+                                                borderRadius:
+                                                    BorderRadius.circular(20),
+                                              ),
                                               child: Text(
-                                                _getDistance(point),
+                                                wasteCategoryLabel(category),
                                                 style: TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  color: Colors.green.shade700,
-                                                  fontSize: 13,
+                                                  color:
+                                                      Colors.green.shade800,
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w600,
                                                 ),
                                               ),
                                             ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                  ],
+                                          ),
+
+                                          Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                Icons.near_me,
+                                                size: 16,
+                                                color: Colors.green.shade700,
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Flexible(
+                                                child: Text(
+                                                  _getDistance(point),
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    color:
+                                                        Colors.green.shade700,
+                                                    fontSize: 13,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                    );
-                  }, childCount: disposalPoints.length),
+                      );
+                    },
+                    childCount: disposalPoints.length,
+                  ),
                 ),
               ),
           ],
         ),
       ),
 
-      // Current location button
+      // Current location button.
       floatingActionButton: _currentPosition != null && _mapReady
           ? FloatingActionButton(
               tooltip: 'Center map on your location',
@@ -680,13 +801,16 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                 );
               },
               backgroundColor: colors.primary,
-              child: const Icon(Icons.my_location, color: Colors.white),
+              child: const Icon(
+                Icons.my_location,
+                color: Colors.white,
+              ),
             )
           : null,
     );
   }
 
-  // Build OpenStreetMap
+  // Build OpenStreetMap.
   Widget _buildMap() {
     if (_isLoading) {
       return const WasteWiseStatusCard(
@@ -694,6 +818,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         message: 'Loading disposal points...',
       );
     }
+
     if (_errorMessage != null) {
       return const Center(
         child: Icon(
@@ -703,16 +828,18 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         ),
       );
     }
+
     final generation = _tileGeneration;
 
     final position = _currentPosition;
+
     final userLatLng = position == null
         ? null
         : LatLng(position.latitude, position.longitude);
-    // Center on a loaded point when GPS is unavailable. The final fallback
-    // is only a Sri Lanka viewport, never a fabricated disposal marker.
-    final center =
-        userLatLng ??
+
+    // Use a real disposal point as the map center if GPS is unavailable.
+    // If no points exist, use Colombo as the initial map viewport.
+    final center = userLatLng ??
         (disposalPoints.isEmpty
             ? const LatLng(6.9271, 79.8612)
             : LatLng(
@@ -726,18 +853,22 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       options: MapOptions(
         initialCenter: center,
         onMapReady: () {
-          if (mounted) setState(() => _mapReady = true);
+          if (mounted) {
+            setState(() => _mapReady = true);
+          }
+
           _startTileTimer();
         },
         initialZoom: 15.0,
       ),
 
       children: [
-        // OpenStreetMap tiles
+        // OpenStreetMap tiles.
         TileLayer(
           key: ValueKey(generation),
-          errorTileCallback: (tile, error, stack) =>
-              _tileFailed(tile, generation),
+          errorTileCallback: (tile, error, stack) {
+            _tileFailed(tile, generation);
+          },
           tileBuilder: (context, child, tile) {
             _tileSucceeded(tile, generation);
             return child;
@@ -748,13 +879,15 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         ),
 
         RichAttributionWidget(
-          attributions: [TextSourceAttribution('OpenStreetMap contributors')],
+          attributions: [
+            TextSourceAttribution('OpenStreetMap contributors'),
+          ],
         ),
 
-        // User and disposal point markers
+        // User and disposal point markers.
         MarkerLayer(
           markers: [
-            // Current user location (only if permission/GPS is available)
+            // Current user location, only when GPS is available.
             if (userLatLng != null)
               Marker(
                 point: userLatLng,
@@ -768,10 +901,13 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                 ),
               ),
 
-            // Disposal point markers
+            // Disposal point markers.
             ...disposalPoints.map(
               (point) => Marker(
-                point: LatLng(point.latitude, point.longitude),
+                point: LatLng(
+                  point.latitude,
+                  point.longitude,
+                ),
                 width: 45,
                 height: 45,
                 child: IconButton(
@@ -793,6 +929,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   }
 }
 
+// Disposal point details bottom sheet.
 class _DisposalPointDetails extends StatefulWidget {
   const _DisposalPointDetails({
     required this.point,
@@ -807,29 +944,41 @@ class _DisposalPointDetails extends StatefulWidget {
   final Future<bool> Function(String category) onRecord;
 
   @override
-  State<_DisposalPointDetails> createState() => _DisposalPointDetailsState();
+  State<_DisposalPointDetails> createState() =>
+      _DisposalPointDetailsState();
 }
 
-class _DisposalPointDetailsState extends State<_DisposalPointDetails> {
+class _DisposalPointDetailsState
+    extends State<_DisposalPointDetails> {
   late final List<String> _categories = widget.point.categoriesAccepted
       .where(ecoPointsPerCategory.containsKey)
       .toSet()
       .toList();
-  late String? _category = _categories.isEmpty ? null : _categories.first;
+
+  late String? _category =
+      _categories.isEmpty ? null : _categories.first;
+
   bool _saving = false;
   bool _recorded = false;
 
   Future<void> _markDisposed() async {
     if (_saving || _recorded || _category == null) return;
+
     setState(() => _saving = true);
+
     try {
       final recorded = await widget.onRecord(_category!);
-      if (mounted) setState(() => _recorded = recorded);
+
+      if (mounted) {
+        setState(() => _recorded = recorded);
+      }
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted) {
+        setState(() => _saving = false);
+      }
     }
+
     if (mounted && _recorded) {
-      // Reveal the success SnackBar and prevent a second award from this sheet.
       Navigator.pop(context);
     }
   }
@@ -838,6 +987,7 @@ class _DisposalPointDetailsState extends State<_DisposalPointDetails> {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final point = widget.point;
+
     return PopScope(
       canPop: !_saving,
       child: Container(
@@ -847,7 +997,9 @@ class _DisposalPointDetailsState extends State<_DisposalPointDetails> {
         padding: const EdgeInsets.all(20),
         decoration: const BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(24),
+          ),
         ),
         child: SafeArea(
           child: SingleChildScrollView(
@@ -859,9 +1011,14 @@ class _DisposalPointDetailsState extends State<_DisposalPointDetails> {
                   children: [
                     CircleAvatar(
                       backgroundColor: const Color(0xFFEFF6FF),
-                      child: const Icon(Icons.location_on, color: Colors.green),
+                      child: const Icon(
+                        Icons.location_on,
+                        color: Colors.green,
+                      ),
                     ),
+
                     const SizedBox(width: 12),
+
                     Expanded(
                       child: Text(
                         point.name,
@@ -871,25 +1028,35 @@ class _DisposalPointDetailsState extends State<_DisposalPointDetails> {
                         ),
                       ),
                     ),
+
                     IconButton(
                       tooltip: 'Close details',
-                      onPressed: _saving ? null : () => Navigator.pop(context),
+                      onPressed: _saving
+                          ? null
+                          : () => Navigator.pop(context),
                       icon: const Icon(Icons.close),
                     ),
                   ],
                 ),
+
                 const SizedBox(height: 20),
+
                 const Text(
                   'Address',
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
+
                 const SizedBox(height: 6),
+
                 Text(point.address),
+
                 const SizedBox(height: 18),
+
                 const Text(
                   'Accepted Waste Categories',
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
+
                 Wrap(
                   spacing: 8,
                   children: point.categoriesAccepted
@@ -901,23 +1068,33 @@ class _DisposalPointDetailsState extends State<_DisposalPointDetails> {
                       )
                       .toList(),
                 ),
+
                 const SizedBox(height: 12),
+
                 Text(
                   'Distance: ${widget.distance}',
-                  style: TextStyle(color: Colors.green.shade700),
+                  style: TextStyle(
+                    color: Colors.green.shade700,
+                  ),
                 ),
+
                 const SizedBox(height: 12),
+
                 const Text(
                   'Source',
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
+
                 const SizedBox(height: 6),
+
                 Text(
                   point.source?.trim().isNotEmpty == true
                       ? point.source!
                       : 'Source not provided',
                 ),
+
                 const SizedBox(height: 20),
+
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
@@ -927,11 +1104,15 @@ class _DisposalPointDetailsState extends State<_DisposalPointDetails> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: colors.primary,
                       foregroundColor: colors.onPrimary,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 14,
+                      ),
                     ),
                   ),
                 ),
+
                 const SizedBox(height: 20),
+
                 if (_categories.isEmpty)
                   const Text(
                     'No supported reward category is available at this point.',
@@ -954,11 +1135,15 @@ class _DisposalPointDetailsState extends State<_DisposalPointDetails> {
                     onChanged: _saving || _recorded
                         ? null
                         : (value) {
-                            setState(() => _category = value);
+                            setState(() {
+                              _category = value;
+                            });
                           },
                   ),
+
                   const SizedBox(height: 12),
                 ],
+
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(
@@ -970,8 +1155,8 @@ class _DisposalPointDetailsState extends State<_DisposalPointDetails> {
                       _saving
                           ? 'Saving...'
                           : _recorded
-                          ? 'Disposal recorded'
-                          : 'Mark as disposed',
+                              ? 'Disposal recorded'
+                              : 'Mark as disposed',
                     ),
                   ),
                 ),
