@@ -5,16 +5,8 @@ import 'guide_screen.dart';
 class CategoryScreen extends StatefulWidget {
   const CategoryScreen({super.key});
 
-  @override
-  State<CategoryScreen> createState() => _CategoryScreenState();
-}
-
-class _CategoryScreenState extends State<CategoryScreen> {
-  // Controller for the search bar
-  final TextEditingController _searchController =
-      TextEditingController();
-
-  // Waste category details
+  // Shared category data
+  // GuideScreen can access CategoryScreen.categories
   static const List<Map<String, dynamic>> categories = [
     {
       'name': 'Electronics',
@@ -46,113 +38,124 @@ class _CategoryScreenState extends State<CategoryScreen> {
     },
   ];
 
-  // Searchable waste items and disposal instructions
+  @override
+  State<CategoryScreen> createState() =>
+      _CategoryScreenState();
+}
+
+class _CategoryScreenState extends State<CategoryScreen> {
+  // Search text controller
+  final TextEditingController _searchController =
+      TextEditingController();
+
+  // Waste items and their disposal instructions
   static const Map<String, Map<String, String>> wasteItems = {
     'phone': {
       'category': 'Electronics',
       'message':
-          'Remove personal data from your phone and take it '
+          'Remove your personal data and take your phone '
           'to an authorized e-waste collection center.',
     },
     'mobile': {
       'category': 'Electronics',
       'message':
-          'Remove personal data and recycle your mobile phone '
-          'through an authorized e-waste collector.',
+          'Remove personal data and recycle your mobile '
+          'phone through an authorized e-waste collector.',
     },
     'smartphone': {
       'category': 'Electronics',
       'message':
-          'Back up and erase your data, then take the phone '
-          'to an authorized e-waste collection center.',
+          'Back up and erase personal data, then take '
+          'the phone to an e-waste collection center.',
     },
     'charger': {
       'category': 'Electronics',
       'message':
-          'Take your old charger to an e-waste collection center. '
-          'Do not place it in ordinary household waste.',
+          'Take your old charger to an authorized '
+          'e-waste collection center.',
     },
     'cable': {
       'category': 'Electronics',
       'message':
-          'Take unused electronic cables to an appropriate '
-          'e-waste collection center.',
+          'Take unused electronic cables to an '
+          'appropriate e-waste collection center.',
     },
     'laptop': {
       'category': 'Electronics',
       'message':
-          'Back up and securely erase personal data. Donate '
-          'working laptops or use an authorized e-waste collector.',
+          'Back up and securely erase personal data. '
+          'Donate working laptops or use an e-waste collector.',
     },
     'shoes': {
       'category': 'Clothing',
       'message':
-          'Donate or reuse shoes that are still in good condition. '
-          'For damaged shoes, check for a footwear recycling program.',
+          'Donate or reuse shoes that are still in good '
+          'condition. Check for footwear recycling options '
+          'for damaged shoes.',
     },
     'shoe': {
       'category': 'Clothing',
       'message':
-          'Donate reusable shoes or find a suitable footwear '
-          'recycling program.',
+          'Donate reusable shoes or find a suitable '
+          'footwear recycling program.',
     },
     'shirt': {
       'category': 'Clothing',
       'message':
           'Donate or reuse shirts in good condition. '
-          'Use an appropriate textile collection for damaged items.',
+          'Use a textile collection for damaged items.',
     },
     'clothes': {
       'category': 'Clothing',
       'message':
-          'Donate clean, reusable clothes. Consider textile '
-          'recycling for items that cannot be reused.',
+          'Donate clean, reusable clothes. Consider '
+          'textile recycling for unusable clothing.',
     },
     'jeans': {
       'category': 'Clothing',
       'message':
-          'Reuse, repair, or donate jeans in good condition. '
-          'Check for textile recycling options for damaged jeans.',
+          'Repair, reuse, or donate jeans. Check for '
+          'textile recycling options for damaged jeans.',
     },
     'battery': {
       'category': 'Batteries',
       'message':
-          'Take used batteries to a designated battery collection '
-          'point. Do not put them in ordinary household waste.',
+          'Take used batteries to a designated battery '
+          'collection point. Do not put them in household waste.',
     },
     'batteries': {
       'category': 'Batteries',
       'message':
-          'Store used batteries safely and take them to a '
-          'designated battery collection point.',
+          'Store used batteries safely and take them '
+          'to a designated battery collection point.',
     },
     'power bank': {
       'category': 'Batteries',
       'message':
-          'Take an old power bank to a collection point that '
-          'accepts rechargeable batteries or electronic waste.',
+          'Take an old power bank to a collection point '
+          'that accepts rechargeable batteries or e-waste.',
     },
     'plastic bottle': {
       'category': 'Plastic',
       'message':
-          'Empty and clean the plastic bottle. Place it in an '
-          'appropriate recycling collection if accepted locally.',
+          'Empty and clean the plastic bottle. Place it '
+          'in a recycling collection if accepted locally.',
     },
     'bottle': {
       'category': 'Plastic',
       'message':
-          'If it is a recyclable plastic bottle, empty and '
-          'clean it before placing it in an accepted collection.',
+          'If it is a recyclable plastic bottle, empty '
+          'and clean it before recycling.',
     },
     'plastic container': {
       'category': 'Plastic',
       'message':
-          'Empty and clean the container. Check whether its '
-          'plastic type is accepted by your local recycler.',
+          'Empty and clean the container. Check whether '
+          'your local recycler accepts its plastic type.',
     },
   };
 
-  // Search for the item entered by the user
+  // Search function
   void _searchWaste() {
     final searchText =
         _searchController.text.trim().toLowerCase();
@@ -168,7 +171,6 @@ class _CategoryScreenState extends State<CategoryScreen> {
 
     final result = wasteItems[searchText];
 
-    // Show a message when the item is not found
     if (result == null) {
       showDialog<void>(
         context: context,
@@ -176,7 +178,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
           title: const Text('Item Not Found'),
           content: const Text(
             'Sorry, this item is not in our database yet. '
-            'Please try another item or browse the categories below.',
+            'Please try another item or browse the categories.',
           ),
           actions: [
             TextButton(
@@ -192,7 +194,6 @@ class _CategoryScreenState extends State<CategoryScreen> {
     final categoryName = result['category']!;
     final disposalMessage = result['message']!;
 
-    // Display the disposal advice
     showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -321,7 +322,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
                     ),
                   ),
 
-                  // Search heading
+                  // Search section heading
                   const Padding(
                     padding: EdgeInsets.fromLTRB(16, 12, 16, 8),
                     child: Text(
@@ -334,7 +335,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
                     ),
                   ),
 
-                  // Search bar and button
+                  // Search bar
                   Padding(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 12,
@@ -394,7 +395,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
                     ),
                   ),
 
-                  // Category section heading
+                  // Category heading
                   const Padding(
                     padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
                     child: Text(
@@ -407,7 +408,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
                     ),
                   ),
 
-                  // Colorful category cards
+                  // Category cards
                   GridView.builder(
                     shrinkWrap: true,
                     physics:
@@ -422,9 +423,11 @@ class _CategoryScreenState extends State<CategoryScreen> {
                       mainAxisSpacing: 12,
                       mainAxisExtent: cardHeight,
                     ),
-                    itemCount: categories.length,
+                    itemCount:
+                        CategoryScreen.categories.length,
                     itemBuilder: (context, index) {
-                      final category = categories[index];
+                      final category =
+                          CategoryScreen.categories[index];
 
                       return Card(
                         elevation: 1,
