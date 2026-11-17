@@ -1,3 +1,10 @@
+// MEMBER 4 CODE GUIDE
+// Week 1: balance card, reward progress and recent-activity layout.
+// Week 2: read real points/activity from the shared SQLite DBHelper.
+// Week 3: loading/error states, lazy scrolling, accessibility and safe refresh.
+// Later team integration supplies the badge model and achievement widgets.
+// This screen reads stored points; disposal writes happen in map_screen.dart.
+
 
 import 'dart:async';
 
@@ -16,6 +23,8 @@ String wasteCategoryLabel(String name) {
 }
 
 /// Shared status card.
+// One reusable presentation for loading, errors, empty results and Retry.
+// MapScreen imports this too, so both Member 4 screens look consistent.
 class WasteWiseStatusCard extends StatelessWidget {
   const WasteWiseStatusCard({
     super.key,
@@ -84,6 +93,8 @@ class WasteWiseStatusCard extends StatelessWidget {
 // ACHIEVEMENT BADGES SECTION
 // ============================================================
 
+// Team achievement integration: display earned and still-locked badges.
+// These widgets display calculated results; they do not write points to SQLite.
 class AchievementBadgesSection extends StatelessWidget {
   const AchievementBadgesSection({
     super.key,
@@ -249,6 +260,7 @@ class AchievementBadgesSection extends StatelessWidget {
 // INDIVIDUAL BADGE CARD
 // ============================================================
 
+// Render one badge; its unlocked flag controls the icon and card appearance.
 class _BadgeCard extends StatelessWidget {
   const _BadgeCard({
     required this.badge,
@@ -338,9 +350,11 @@ class _BadgeCard extends StatelessWidget {
 // POINTS SCREEN
 // ============================================================
 
+// StatefulWidget is needed because database results arrive asynchronously.
 class PointsScreen extends StatefulWidget {
   const PointsScreen({super.key, this.database});
 
+  // Tests may inject a fake DBHelper; the real app uses the shared singleton.
   final DBHelper? database;
 
   @override
@@ -350,14 +364,18 @@ class PointsScreen extends StatefulWidget {
 class _PointsScreenState extends State<PointsScreen>
     with WidgetsBindingObserver {
 
+  // Last loaded database balance and newest-first disposal history.
   int _total = 0;
 
   List<Map<String, dynamic>> _activities = [];
 
+  // Loading/error flags choose which UI to show while the database is read.
   bool _loading = true;
+  // Coalesce overlapping refreshes instead of launching duplicate reads.
   bool _loadInProgress = false;
   bool _reloadRequested = false;
 
+  // Remember tab visibility: IndexedStack keeps hidden screens alive.
   bool? _wasVisible;
 
   String? _error;
@@ -368,6 +386,7 @@ class _PointsScreenState extends State<PointsScreen>
   // BADGE CALCULATIONS
   // ==========================================================
 
+  // Use the team's badge rules with the real point total and disposal count.
   List<EcoBadge> get _unlockedBadges {
     return ecoBadges.where((badge) {
       return badge.isUnlocked(
@@ -377,6 +396,7 @@ class _PointsScreenState extends State<PointsScreen>
     }).toList();
   }
 
+  // The inverse calculation supplies the badges that have not been earned.
   List<EcoBadge> get _lockedBadges {
     return ecoBadges.where((badge) {
       return !badge.isUnlocked(
@@ -391,6 +411,7 @@ class _PointsScreenState extends State<PointsScreen>
   // ==========================================================
 
   @override
+  // Runs once: subscribe to app lifecycle changes and start the first DB read.
   void initState() {
     super.initState();
 
@@ -400,6 +421,7 @@ class _PointsScreenState extends State<PointsScreen>
   }
 
   @override
+  // Reload on a hidden -> visible tab change, not on every widget rebuild.
   void didChangeDependencies() {
     super.didChangeDependencies();
 
@@ -415,6 +437,7 @@ class _PointsScreenState extends State<PointsScreen>
   }
 
   @override
+  // Stop receiving app lifecycle callbacks after this screen is removed.
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
 
@@ -422,6 +445,7 @@ class _PointsScreenState extends State<PointsScreen>
   }
 
   @override
+  // Returning from another app refreshes this screen only when it is visible.
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && (_wasVisible ?? true)) {
       _loadPoints();
@@ -432,9 +456,12 @@ class _PointsScreenState extends State<PointsScreen>
   // LOAD POINTS AND ACTIVITIES
   // ==========================================================
 
+  // Read the shared DB API, then rebuild the UI with setState.
+  // No sample starting balance, INSERT or point award belongs in this method.
   Future<void> _loadPoints() async {
     if (!mounted) return;
 
+    // Remember one extra refresh if the user switches tabs during a read.
     if (_loadInProgress) {
       _reloadRequested = true;
       return;
@@ -448,6 +475,7 @@ class _PointsScreenState extends State<PointsScreen>
     });
 
     try {
+      // Return the balance and log together; DBHelper owns the SQL operations.
       Future<(int, List<Map<String, dynamic>>)> read() async {
         final total = await _database.getTotalEcoPoints();
 
@@ -456,6 +484,7 @@ class _PointsScreenState extends State<PointsScreen>
         return (total, activities);
       }
 
+      // A slow read becomes a retryable error instead of an endless spinner.
       final (total, activities) = await read().timeout(
         const Duration(seconds: 20),
       );
@@ -463,6 +492,7 @@ class _PointsScreenState extends State<PointsScreen>
       if (!mounted) return;
 
       setState(() {
+        // mounted was checked first: never update a screen that is gone.
         _total = total;
         _activities = activities;
         _loading = false;
@@ -477,6 +507,7 @@ class _PointsScreenState extends State<PointsScreen>
 
         _loading = false;
       });
+    // Release the read guard after success or failure, then handle a queued read.
     } finally {
       _loadInProgress = false;
 
@@ -492,6 +523,7 @@ class _PointsScreenState extends State<PointsScreen>
   // DATE FORMATTING
   // ==========================================================
 
+  // SQLite stores ISO timestamps; show a readable local date, with a safe fallback.
   String _activityDate(Object? value) {
     final date = DateTime.tryParse(
       value?.toString() ?? '',
@@ -510,6 +542,7 @@ class _PointsScreenState extends State<PointsScreen>
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
 
+    // Team badge integration: use the next higher points threshold as the target.
     // Find the next locked points-based achievement.
     final nextBadge = ecoBadges
         .where((badge) =>
@@ -526,6 +559,7 @@ class _PointsScreenState extends State<PointsScreen>
         ? nextBadge.first.requiredPoints
         : 0;
 
+    // Keep progress inside 0..1 and avoid division when no next target exists.
     // Calculate remaining points and progress.
     final int remaining = hasNextBadge
         ? (nextTarget - _total).clamp(0, nextTarget)
@@ -776,6 +810,7 @@ class _PointsScreenState extends State<PointsScreen>
                               // ECO ACHIEVEMENTS
                               // ==========================================
 
+                              // Display the team badge calculations using the loaded DB data.
                               AchievementBadgesSection(
                                 unlockedBadges: _unlockedBadges,
                                 lockedBadges: _lockedBadges,
@@ -820,9 +855,11 @@ class _PointsScreenState extends State<PointsScreen>
                             20,
                             20,
                           ),
+                          // Build activity rows as they scroll into view, not the entire history.
                           sliver: SliverList(
                             delegate: SliverChildBuilderDelegate(
                               (context, index) {
+                                // Each DB log row contains category_name, points_earned and disposed_at.
                                 final item = _activities[index];
 
                                 final category =

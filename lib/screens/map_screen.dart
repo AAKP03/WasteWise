@@ -119,9 +119,7 @@ class _MapScreenState extends State<MapScreen> {
 
     final timer = Timer(const Duration(seconds: 20), () {
       if (!waiter.isCompleted) {
-        waiter.completeError(
-          TimeoutException('Location request timed out.'),
-        );
+        waiter.completeError(TimeoutException('Location request timed out.'));
       }
     });
 
@@ -173,8 +171,7 @@ class _MapScreenState extends State<MapScreen> {
       if (!mounted) return;
 
       if (position == null) {
-        message =
-            'Location unavailable. You can still browse points without distances.';
+        message = 'Location unavailable. You can still browse points without distances.';
 
         if (widget.locationProvider == null) {
           final enabled = await Geolocator.isLocationServiceEnabled().timeout(
@@ -220,10 +217,7 @@ class _MapScreenState extends State<MapScreen> {
     });
 
     if (position != null && _mapReady) {
-      _mapController.move(
-        LatLng(position.latitude, position.longitude),
-        15,
-      );
+      _mapController.move(LatLng(position.latitude, position.longitude), 15);
     }
   }
 
@@ -233,20 +227,17 @@ class _MapScreenState extends State<MapScreen> {
 
     if (position == null) return;
 
-    double distance(DisposalPoint point) =>
-        LocationService.distanceInKm(
-          position.latitude,
-          position.longitude,
-          point.latitude,
-          point.longitude,
-        );
+    double distance(DisposalPoint point) => LocationService.distanceInKm(
+      position.latitude,
+      position.longitude,
+      point.latitude,
+      point.longitude,
+    );
 
     points.sort((a, b) {
       final comparison = distance(a).compareTo(distance(b));
 
-      return comparison != 0
-          ? comparison
-          : a.name.compareTo(b.name);
+      return comparison != 0 ? comparison : a.name.compareTo(b.name);
     });
   }
 
@@ -289,7 +280,8 @@ class _MapScreenState extends State<MapScreen> {
       return;
     }
 
-    final changed = _tilesLoading ||
+    final changed =
+        _tilesLoading ||
         _tilesSlow ||
         _failedTiles.contains(tile.coordinates.toString());
 
@@ -375,18 +367,14 @@ class _MapScreenState extends State<MapScreen> {
 
       if (!launched && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not open Google Maps.'),
-          ),
+          const SnackBar(content: Text('Could not open Google Maps.')),
         );
       }
     } catch (e) {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Error opening directions.'),
-        ),
+        const SnackBar(content: Text('Error opening directions.')),
       );
     }
   }
@@ -455,11 +443,9 @@ class _MapScreenState extends State<MapScreen> {
       final earned = await _database.addEcoPoints(category);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('+$earned Eco Points earned'),
-          ),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('+$earned Eco Points earned')));
       }
 
       return true;
@@ -467,9 +453,7 @@ class _MapScreenState extends State<MapScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text(
-              'Could not record disposal. Please try again.',
-            ),
+            content: Text('Could not record disposal. Please try again.'),
           ),
         );
       }
@@ -565,14 +549,14 @@ class _MapScreenState extends State<MapScreen> {
                   // Map section.
                   Container(
                     width: double.infinity,
-                    height: (MediaQuery.sizeOf(context).height * 0.3)
-                        .clamp(110.0, 230.0),
+                    height: (MediaQuery.sizeOf(context).height * 0.3).clamp(
+                      110.0,
+                      230.0,
+                    ),
                     margin: const EdgeInsets.fromLTRB(16, 16, 16, 12),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: Colors.green.shade200,
-                      ),
+                      border: Border.all(color: Colors.green.shade200),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.green.withValues(alpha: 0.1),
@@ -590,18 +574,16 @@ class _MapScreenState extends State<MapScreen> {
                   // Map tile status.
                   if (!_isLoading &&
                       _errorMessage == null &&
-                      (_tilesLoading ||
-                          _tilesSlow ||
-                          _failedTiles.isNotEmpty))
+                      (_tilesLoading || _tilesSlow || _failedTiles.isNotEmpty))
                     WasteWiseStatusCard(
                       loading: _tilesLoading && _failedTiles.isEmpty,
                       icon: Icons.cloud_off_outlined,
                       message: _failedTiles.isNotEmpty
                           ? 'Some map tiles could not load. Check your internet connection. '
-                              'The location list and saved points are still available.'
+                                'The location list and saved points are still available.'
                           : _tilesSlow
-                              ? 'Map tiles are taking longer than expected. Check your connection and retry.'
-                              : 'Loading map tiles...',
+                          ? 'Map tiles are taking longer than expected. Check your connection and retry.'
+                          : 'Loading map tiles...',
                       onRetry: _tilesSlow || _failedTiles.isNotEmpty
                           ? _retryTiles
                           : null,
@@ -634,7 +616,6 @@ class _MapScreenState extends State<MapScreen> {
                   message: 'Loading disposal points...',
                 ),
               )
-
             // Database error.
             else if (_errorMessage != null)
               SliverFillRemaining(
@@ -645,7 +626,6 @@ class _MapScreenState extends State<MapScreen> {
                   onRetry: _loadPoints,
                 ),
               )
-
             // Empty state.
             else if (disposalPoints.isEmpty)
               SliverFillRemaining(
@@ -657,130 +637,122 @@ class _MapScreenState extends State<MapScreen> {
                   retryLabel: 'Retry filter',
                 ),
               )
-
             // Disposal point list.
             else
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      final point = disposalPoints[index];
+                  delegate: SliverChildBuilderDelegate((context, index) {
+                    final point = disposalPoints[index];
 
-                      return Card(
-                        elevation: 1.5,
-                        margin: const EdgeInsets.only(bottom: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(16),
-                          onTap: () => _showPointDetails(point),
-                          child: Padding(
-                            padding: const EdgeInsets.all(14),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                CircleAvatar(
-                                  radius: 24,
-                                  backgroundColor: const Color(0xFFEFF6FF),
-                                  child: const Icon(
-                                    Icons.location_on,
-                                    color: Colors.green,
-                                    size: 26,
-                                  ),
+                    return Card(
+                      elevation: 1.5,
+                      margin: const EdgeInsets.only(bottom: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () => _showPointDetails(point),
+                        child: Padding(
+                          padding: const EdgeInsets.all(14),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              CircleAvatar(
+                                radius: 24,
+                                backgroundColor: const Color(0xFFEFF6FF),
+                                child: const Icon(
+                                  Icons.location_on,
+                                  color: Colors.green,
+                                  size: 26,
                                 ),
+                              ),
 
-                                const SizedBox(width: 14),
+                              const SizedBox(width: 14),
 
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        point.name,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16,
-                                        ),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      point.name,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
                                       ),
+                                    ),
 
-                                      const SizedBox(height: 6),
+                                    const SizedBox(height: 6),
 
-                                      Text(
-                                        point.address,
-                                        style: TextStyle(
-                                          color: Colors.grey.shade700,
-                                          fontSize: 14,
-                                        ),
+                                    Text(
+                                      point.address,
+                                      style: TextStyle(
+                                        color: Colors.grey.shade700,
+                                        fontSize: 14,
                                       ),
+                                    ),
 
-                                      const SizedBox(height: 10),
+                                    const SizedBox(height: 10),
 
-                                      Wrap(
-                                        spacing: 8,
-                                        runSpacing: 8,
-                                        children: [
-                                          ...point.categoriesAccepted.map(
-                                            (category) => Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                horizontal: 10,
-                                                vertical: 5,
-                                              ),
-                                              decoration: BoxDecoration(
-                                                color: Colors.green.shade50,
-                                                borderRadius:
-                                                    BorderRadius.circular(20),
-                                              ),
-                                              child: Text(
-                                                wasteCategoryLabel(category),
-                                                style: TextStyle(
-                                                  color:
-                                                      Colors.green.shade800,
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.w600,
-                                                ),
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children: [
+                                        ...point.categoriesAccepted.map(
+                                          (category) => Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 10,
+                                              vertical: 5,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Colors.green.shade50,
+                                              borderRadius:
+                                                  BorderRadius.circular(20),
+                                            ),
+                                            child: Text(
+                                              wasteCategoryLabel(category),
+                                              style: TextStyle(
+                                                color: Colors.green.shade800,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
                                               ),
                                             ),
                                           ),
+                                        ),
 
-                                          Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Icon(
-                                                Icons.near_me,
-                                                size: 16,
-                                                color: Colors.green.shade700,
-                                              ),
-                                              const SizedBox(width: 4),
-                                              Flexible(
-                                                child: Text(
-                                                  _getDistance(point),
-                                                  style: TextStyle(
-                                                    fontWeight: FontWeight.bold,
-                                                    color:
-                                                        Colors.green.shade700,
-                                                    fontSize: 13,
-                                                  ),
+                                        Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.near_me,
+                                              size: 16,
+                                              color: Colors.green.shade700,
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Flexible(
+                                              child: Text(
+                                                _getDistance(point),
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.green.shade700,
+                                                  fontSize: 13,
                                                 ),
                                               ),
-                                            ],
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
                         ),
-                      );
-                    },
-                    childCount: disposalPoints.length,
-                  ),
+                      ),
+                    );
+                  }, childCount: disposalPoints.length),
                 ),
               ),
           ],
@@ -801,10 +773,7 @@ class _MapScreenState extends State<MapScreen> {
                 );
               },
               backgroundColor: colors.primary,
-              child: const Icon(
-                Icons.my_location,
-                color: Colors.white,
-              ),
+              child: const Icon(Icons.my_location, color: Colors.white),
             )
           : null,
     );
@@ -839,7 +808,8 @@ class _MapScreenState extends State<MapScreen> {
 
     // Use a real disposal point as the map center if GPS is unavailable.
     // If no points exist, use Colombo as the initial map viewport.
-    final center = userLatLng ??
+    final center =
+        userLatLng ??
         (disposalPoints.isEmpty
             ? const LatLng(6.9271, 79.8612)
             : LatLng(
@@ -879,9 +849,7 @@ class _MapScreenState extends State<MapScreen> {
         ),
 
         RichAttributionWidget(
-          attributions: [
-            TextSourceAttribution('OpenStreetMap contributors'),
-          ],
+          attributions: [TextSourceAttribution('OpenStreetMap contributors')],
         ),
 
         // User and disposal point markers.
@@ -904,10 +872,7 @@ class _MapScreenState extends State<MapScreen> {
             // Disposal point markers.
             ...disposalPoints.map(
               (point) => Marker(
-                point: LatLng(
-                  point.latitude,
-                  point.longitude,
-                ),
+                point: LatLng(point.latitude, point.longitude),
                 width: 45,
                 height: 45,
                 child: IconButton(
@@ -944,19 +909,16 @@ class _DisposalPointDetails extends StatefulWidget {
   final Future<bool> Function(String category) onRecord;
 
   @override
-  State<_DisposalPointDetails> createState() =>
-      _DisposalPointDetailsState();
+  State<_DisposalPointDetails> createState() => _DisposalPointDetailsState();
 }
 
-class _DisposalPointDetailsState
-    extends State<_DisposalPointDetails> {
+class _DisposalPointDetailsState extends State<_DisposalPointDetails> {
   late final List<String> _categories = widget.point.categoriesAccepted
       .where(ecoPointsPerCategory.containsKey)
       .toSet()
       .toList();
 
-  late String? _category =
-      _categories.isEmpty ? null : _categories.first;
+  late String? _category = _categories.isEmpty ? null : _categories.first;
 
   bool _saving = false;
   bool _recorded = false;
@@ -997,9 +959,7 @@ class _DisposalPointDetailsState
         padding: const EdgeInsets.all(20),
         decoration: const BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.vertical(
-            top: Radius.circular(24),
-          ),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: SafeArea(
           child: SingleChildScrollView(
@@ -1011,10 +971,7 @@ class _DisposalPointDetailsState
                   children: [
                     CircleAvatar(
                       backgroundColor: const Color(0xFFEFF6FF),
-                      child: const Icon(
-                        Icons.location_on,
-                        color: Colors.green,
-                      ),
+                      child: const Icon(Icons.location_on, color: Colors.green),
                     ),
 
                     const SizedBox(width: 12),
@@ -1031,9 +988,7 @@ class _DisposalPointDetailsState
 
                     IconButton(
                       tooltip: 'Close details',
-                      onPressed: _saving
-                          ? null
-                          : () => Navigator.pop(context),
+                      onPressed: _saving ? null : () => Navigator.pop(context),
                       icon: const Icon(Icons.close),
                     ),
                   ],
@@ -1073,9 +1028,7 @@ class _DisposalPointDetailsState
 
                 Text(
                   'Distance: ${widget.distance}',
-                  style: TextStyle(
-                    color: Colors.green.shade700,
-                  ),
+                  style: TextStyle(color: Colors.green.shade700),
                 ),
 
                 const SizedBox(height: 12),
@@ -1104,9 +1057,7 @@ class _DisposalPointDetailsState
                     style: ElevatedButton.styleFrom(
                       backgroundColor: colors.primary,
                       foregroundColor: colors.onPrimary,
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 14,
-                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
                   ),
                 ),
@@ -1155,8 +1106,8 @@ class _DisposalPointDetailsState
                       _saving
                           ? 'Saving...'
                           : _recorded
-                              ? 'Disposal recorded'
-                              : 'Mark as disposed',
+                          ? 'Disposal recorded'
+                          : 'Mark as disposed',
                     ),
                   ),
                 ),
