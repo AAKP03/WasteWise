@@ -75,8 +75,3 @@ Notes:
 - Coverage is limited to the Colombo area, and clothing has only two collection points.
 - Listings should be rechecked regularly, since collection points change.
 
-A few things to check before you commit:
-
-The team table. Fill in the names, and make sure each role matches what that person actually did.
-The “Features” wording. Ask Member 4 whether “achievement badges” matches how their badges work, and edit that line if not.
-The docs folder. I saw it in your explorer. If it holds screenshots, add a line like ![Map screen](docs/map.png) under Features, since images make a README look much better to a lecturer.
