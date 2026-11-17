@@ -62,11 +62,11 @@ Notes:
 
 | Member | Role | Area |
 |---|---|---|
-| A.A.K. Paranawithana | Backend / database | SQLite schema, seed data, data access functions, Eco Points data |
-| [Name] | Maps / GPS | Location service, map, directions |
-| [Name] | Disposal UI | Category and guide screens |
-| [Name] | Points UI | Eco Points screen and badges |
-| [Name] | Integration / QA | Navigation, merging, testing |
+| Member 1 | Backend / database | SQLite schema, seed data, data access functions, Eco Points data |
+| Member 2 | Maps / GPS | Location service, map, directions |
+| Member 3 | Disposal UI | Category and guide screens |
+| Member 4 | Points UI | Eco Points screen and badges |
+| Member 5 | Integration / QA | Navigation, merging, testing |
 
 ## Limitations and future work
 
